@@ -70,9 +70,6 @@ CLOUDINARY_UPLOAD_PRESET=
 
 ## Screenshots
 
-| Login | Feed | Chat |
-| --- | --- | --- |
-| _Add `screenshots/login.png`_ | _Add `screenshots/feed.png`_ | _Add `screenshots/chat.png`_ |
 
 ## Original UI Notes
 
