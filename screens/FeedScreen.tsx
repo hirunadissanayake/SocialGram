@@ -623,9 +623,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  disabledSend: {
-    opacity: 0.5,
-  },
   commentRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -675,6 +672,9 @@ const styles = StyleSheet.create({
     color: palette.accent,
     fontSize: 16,
     fontWeight: '600',
+  },
+  disabledSend: {
+    opacity: 0.5,
   },
 });
 
