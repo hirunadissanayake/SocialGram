@@ -114,11 +114,5 @@ CLOUDINARY_UPLOAD_PRESET=
 | `yarn test` | Run Jest suite |
 | `npx react-native start --reset-cache --port 8082` | Useful when port 8081 is taken |
 
-## Stories How-To
 
-- Stories live under `stories/{storyId}` documents containing `userId`, `imageUrl`, `caption`, `createdAt`, and `expiresAt`.
-- Users can toggle Post/Story inside Create Post; Story uploads expire after 24h and immediately show in the horizontal tray with modal playback.
-- Tapping your own story reveals a menu to delete it from Firestore.
-
-Ready for review! PRs welcome for performance tweaks or additional features (stories, push notifications, etc.).
 
