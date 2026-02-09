@@ -11,8 +11,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import LottieView from 'lottie-react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Video from 'react-native-video';
+import Share from 'react-native-share';
 import {
   collection,
   deleteDoc,
@@ -33,7 +36,7 @@ import {
 import { auth, db } from '../services/firebase';
 import Surface from '../components/ui/Surface';
 import Avatar from '../components/ui/Avatar';
-import StateView from '../components/ui/StateView';
+import Stories, { StoryAuthor, StoryItem } from '../components/Stories';
 import { palette, spacing } from '../theme/tokens';
 
 type Post = {
@@ -44,6 +47,7 @@ type Post = {
   mediaUrl?: string;
   mediaType?: 'image' | 'video';
   caption?: string;
+  title?: string;
   createdAt?: Timestamp;
   likesCount?: number;
   commentsCount?: number;
@@ -54,6 +58,17 @@ type PostComment = {
   text: string;
   userId: string;
   createdAt?: Timestamp;
+};
+
+type StoryRecord = {
+  userId: string;
+  username?: string;
+  userPhotoUrl?: string;
+  imageUrl?: string;
+  mediaUrl?: string;
+  caption?: string;
+  createdAt?: Timestamp;
+  expiresAt?: Timestamp;
 };
 
 const chunk = (input: string[], size = 10) => {
@@ -84,12 +99,94 @@ const formatRelativeTime = (timestamp?: Timestamp) => {
   return `${days}d ago`;
 };
 
+const POST_DEEP_LINK_BASE_URL = 'https://socialgram.app/posts';
+
 const FeedScreen: React.FC = () => {
   const [posts, setPosts] = useState<Post[]>([]);
   const [friendIds, setFriendIds] = useState<string[]>([]);
   const [profiles, setProfiles] = useState<Record<string, { username?: string; photoUrl?: string }>>({});
+  const [storyDocs, setStoryDocs] = useState<Record<string, StoryRecord & { id: string }>>({});
   const [loading, setLoading] = useState(true);
   const currentUser = auth.currentUser;
+  const insets = useSafeAreaInsets();
+
+  const storyAuthors = useMemo<StoryAuthor[]>(() => {
+    const grouped = new Map<string, StoryAuthor>();
+
+    Object.values(storyDocs).forEach((record) => {
+      const imageUrl = record.imageUrl || record.mediaUrl;
+      if (!imageUrl) {
+        return;
+      }
+
+      const profile = profiles[record.userId];
+      const username = record.username || profile?.username || 'Unknown user';
+      const avatar = record.userPhotoUrl || profile?.photoUrl || null;
+      const storyItem: StoryItem = {
+        id: record.id,
+        imageUrl,
+        caption: record.caption,
+        createdAtMs: record.createdAt?.toMillis?.() ?? 0,
+      };
+
+      const existing = grouped.get(record.userId);
+      if (existing) {
+        existing.username = username;
+        if (!existing.avatar && avatar) {
+          existing.avatar = avatar;
+        }
+        existing.stories.push(storyItem);
+      } else {
+        grouped.set(record.userId, {
+          userId: record.userId,
+          username,
+          avatar,
+          stories: [storyItem],
+        });
+      }
+    });
+
+    return Array.from(grouped.values())
+      .map((author) => ({
+        ...author,
+        stories: author.stories.sort((a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0)),
+      }))
+      .sort((first, second) => {
+        const recentFirst = first.stories[first.stories.length - 1]?.createdAtMs ?? 0;
+        const recentSecond = second.stories[second.stories.length - 1]?.createdAtMs ?? 0;
+        return recentSecond - recentFirst;
+      });
+  }, [storyDocs, profiles]);
+
+  const handleDeleteStory = useCallback(
+    async (storyId: string) => {
+      try {
+        await deleteDoc(doc(db, 'stories', storyId));
+      } catch (error) {
+        console.error('Error deleting story', error);
+        Alert.alert('Error', 'Unable to delete story right now.');
+      } finally {
+        setStoryDocs((prev) => {
+          if (!prev[storyId]) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[storyId];
+          return next;
+        });
+      }
+    },
+    []
+  );
+
+  const storiesHeader = useMemo(() => {
+    if (!storyAuthors.length) {
+      return null;
+    }
+    return () => (
+      <Stories authors={storyAuthors} currentUserId={currentUser?.uid} onDeleteStory={handleDeleteStory} />
+    );
+  }, [storyAuthors, currentUser?.uid, handleDeleteStory]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -114,11 +211,14 @@ const FeedScreen: React.FC = () => {
     if (!currentUser) {
       setPosts([]);
       setProfiles({});
+      setStoryDocs({});
       setLoading(false);
       return;
     }
 
     const lookup = new Map<string, Post>();
+    setStoryDocs({});
+
     const subscriptions: Unsubscribe[] = [];
     const ids = Array.from(new Set([currentUser.uid, ...friendIds]));
 
@@ -167,6 +267,53 @@ const FeedScreen: React.FC = () => {
       subscriptions.forEach((unsub) => unsub());
     };
   }, [friendIds, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setStoryDocs({});
+      return;
+    }
+
+    const ids = Array.from(new Set([currentUser.uid, ...friendIds]));
+    if (ids.length === 0) {
+      setStoryDocs({});
+      return;
+    }
+
+    const subscriptions: Unsubscribe[] = ids.map((userId) => {
+      const storiesQuery = query(collection(db, 'stories'), where('userId', '==', userId));
+      return onSnapshot(
+        storiesQuery,
+        (snapshot) => {
+          setStoryDocs((prev) => {
+            const next: Record<string, StoryRecord & { id: string }> = {};
+            Object.entries(prev).forEach(([docId, record]) => {
+              if (record.userId !== userId) {
+                next[docId] = record;
+              }
+            });
+
+            snapshot.docs.forEach((docSnap) => {
+              const data = docSnap.data() as StoryRecord;
+              const expiresAtMs = data.expiresAt?.toMillis?.();
+              const imageSource = data.imageUrl || data.mediaUrl;
+              if (!imageSource || (expiresAtMs && expiresAtMs <= Date.now())) {
+                return;
+              }
+              next[docSnap.id] = { ...data, id: docSnap.id };
+            });
+
+            return next;
+          });
+        },
+        (error) => console.error('Error loading stories', error)
+      );
+    });
+
+    return () => {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [currentUser, friendIds]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -220,20 +367,42 @@ const FeedScreen: React.FC = () => {
     [currentUser?.uid, profiles]
   );
 
+  const insetStyle = {
+    paddingBottom: insets.bottom,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  };
+
   if (loading) {
-    return <StateView title="Loading feed" loading />;
+    return (
+      <SafeAreaView style={[styles.safeArea, insetStyle]} edges={['top', 'right', 'bottom', 'left']}>
+        <View style={styles.loadingContainer}>
+          <LottieView
+            source={require('../assets/animations/SocialGram Animated Logo.json')}
+            autoPlay
+            loop
+            style={styles.loadingAnimation}
+          />
+          <Text style={styles.loadingCaption}>Preparing your feed…</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={posts}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        ListEmptyComponent={<Text style={styles.emptyText}>Follow friends to fill your feed.</Text>}
-        contentContainerStyle={[styles.listContent, posts.length === 0 && styles.flexGrow]}
-      />
-    </View>
+    <SafeAreaView style={[styles.safeArea, insetStyle]} edges={['top', 'right', 'bottom', 'left']}>
+      <View style={[styles.container, { paddingBottom: spacing.xl + insets.bottom }]}>
+        <FlatList
+          data={posts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          ListHeaderComponent={storiesHeader}
+          ListHeaderComponentStyle={storyAuthors.length ? styles.listHeader : undefined}
+          ListEmptyComponent={<Text style={styles.emptyText}>Follow friends to fill your feed.</Text>}
+          contentContainerStyle={[styles.listContent, posts.length === 0 && styles.flexGrow]}
+        />
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -254,6 +423,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, profile, profi
   const [captionDraft, setCaptionDraft] = useState(post.caption ?? '');
   const [updatingCaption, setUpdatingCaption] = useState(false);
   const [deletingPost, setDeletingPost] = useState(false);
+  const [sharingPost, setSharingPost] = useState(false);
   const cardAnim = useRef(new Animated.Value(0)).current;
   const likeScale = useRef(new Animated.Value(1)).current;
 
@@ -355,6 +525,32 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, profile, profi
       setSendingComment(false);
     }
   }, [commentText, currentUserId, post.id, sendingComment]);
+
+  const sharePost = useCallback(async () => {
+    if (sharingPost) {
+      return;
+    }
+    const postTitle = post.title?.trim() || post.caption?.trim() || 'SocialGram post';
+    const deepLink = `${POST_DEEP_LINK_BASE_URL}/${post.id}`;
+    setSharingPost(true);
+    try {
+      await Share.open({
+        title: 'Share post',
+        message: `${postTitle}\n${deepLink}`,
+        url: deepLink,
+        failOnCancel: false,
+      });
+    } catch (error: any) {
+      const errorMessage = error?.message || error?.error;
+      const cancelled = typeof errorMessage === 'string' && errorMessage.includes('User did not share');
+      if (!cancelled) {
+        console.error('Failed to share post', error);
+        Alert.alert('Share failed', 'Unable to share this post right now.');
+      }
+    } finally {
+      setSharingPost(false);
+    }
+  }, [post.caption, post.id, post.title, sharingPost]);
 
   const animatedCardStyle = useMemo(
     () => ({
@@ -470,7 +666,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, profile, profi
             <Icon name="chatbubble-outline" size={22} color={palette.textMuted} />
             <Text style={styles.countText}>{post.commentsCount ?? 0}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionRow}>
+          <TouchableOpacity style={styles.actionRow} onPress={sharePost} disabled={sharingPost}>
             <Icon name="paper-plane-outline" size={22} color={palette.textMuted} />
           </TouchableOpacity>
         </View>
@@ -531,6 +727,26 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUserId, profile, profi
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: palette.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: palette.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.md,
+  },
+  loadingAnimation: {
+    width: 220,
+    height: 220,
+  },
+  loadingCaption: {
+    color: palette.text,
+    fontSize: 18,
+    fontWeight: '600',
+  },
   container: {
     flex: 1,
     backgroundColor: palette.background,
@@ -541,6 +757,9 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: spacing.xl,
+  },
+  listHeader: {
+    marginBottom: spacing.md,
   },
   emptyText: {
     textAlign: 'center',

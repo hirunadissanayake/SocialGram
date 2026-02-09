@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import Video from 'react-native-video';
 import axios from 'axios';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { cloudinaryUploadPreset, cloudinaryUrl } from '../services/cloudinary';
 import Screen from '../components/ui/Screen';
@@ -13,10 +13,13 @@ import { palette, spacing, typography } from '../theme/tokens';
 
 type MediaAsset = Asset & { mediaType?: 'photo' | 'video' };
 
+const STORY_TTL_MS = 24 * 60 * 60 * 1000;
+
 const CreatePostScreen: React.FC = ({ navigation }: any) => {
   const [media, setMedia] = useState<MediaAsset | null>(null);
   const [caption, setCaption] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [shareTarget, setShareTarget] = useState<'post' | 'story'>('post');
 
   const currentUser = auth.currentUser;
 
@@ -77,19 +80,34 @@ const CreatePostScreen: React.FC = ({ navigation }: any) => {
         throw new Error('Missing media URL');
       }
 
-      await addDoc(collection(db, 'posts'), {
-        userId: currentUser.uid,
-        username: currentUser.displayName || 'Anonymous',
-        mediaUrl,
-        mediaType: resolvedType,
-        caption: caption.trim(),
-        createdAt: serverTimestamp(),
-        likesCount: 0,
-        commentsCount: 0,
-      });
+      if (shareTarget === 'story') {
+        await addDoc(collection(db, 'stories'), {
+          userId: currentUser.uid,
+          username: currentUser.displayName || 'Anonymous',
+          userPhotoUrl: currentUser.photoURL || null,
+          imageUrl: mediaUrl,
+          mediaUrl,
+          caption: caption.trim() || null,
+          createdAt: serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(Date.now() + STORY_TTL_MS),
+        });
+        Alert.alert('Story posted', 'Your story will be visible for 24 hours.');
+      } else {
+        await addDoc(collection(db, 'posts'), {
+          userId: currentUser.uid,
+          username: currentUser.displayName || 'Anonymous',
+          mediaUrl,
+          mediaType: resolvedType,
+          caption: caption.trim(),
+          createdAt: serverTimestamp(),
+          likesCount: 0,
+          commentsCount: 0,
+        });
+      }
 
       setMedia(null);
       setCaption('');
+      setShareTarget('post');
       navigation?.goBack?.();
     } catch (error: any) {
       console.error('Error creating post', error);
@@ -102,6 +120,23 @@ const CreatePostScreen: React.FC = ({ navigation }: any) => {
   return (
     <Screen scrollable contentContainerStyle={styles.container}>
       <Text style={styles.title}>Create Post</Text>
+      <View style={styles.modeSwitcher}>
+        {(['post', 'story'] as const).map((option) => {
+          const active = shareTarget === option;
+          return (
+            <TouchableOpacity
+              key={option}
+              style={[styles.modeButton, active && styles.modeButtonActive]}
+              onPress={() => setShareTarget(option)}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>
+                {option === 'post' ? 'Post' : 'Story'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
       <Button 
         label={media ? 'Change media' : 'Pick image / video'} 
         variant="secondary" 
@@ -133,7 +168,7 @@ const CreatePostScreen: React.FC = ({ navigation }: any) => {
       />
 
       <Button
-        label={uploading ? 'Uploading...' : 'Share'}
+        label={uploading ? (shareTarget === 'story' ? 'Posting story...' : 'Uploading...') : shareTarget === 'story' ? 'Share story' : 'Share post'}
         onPress={handleCreatePost}
         disabled={uploading}
         loading={uploading}
@@ -150,6 +185,29 @@ const styles = StyleSheet.create({
   },
   title: {
     ...typography.title,
+  },
+  modeSwitcher: {
+    flexDirection: 'row',
+    backgroundColor: palette.surfaceAlt,
+    borderRadius: 999,
+    padding: 4,
+    alignSelf: 'flex-start',
+  },
+  modeButton: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 999,
+  },
+  modeButtonActive: {
+    backgroundColor: palette.primary,
+  },
+  modeLabel: {
+    ...typography.caption,
+    fontWeight: '600',
+    color: palette.text,
+  },
+  modeLabelActive: {
+    color: '#031418',
   },
   previewWrapper: {
     borderStyle: 'dashed',

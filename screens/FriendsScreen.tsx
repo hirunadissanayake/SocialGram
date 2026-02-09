@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Icon from 'react-native-vector-icons/Ionicons';
 import { collection, doc, onSnapshot, query, serverTimestamp, setDoc } from 'firebase/firestore';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Avatar from '../components/ui/Avatar';
 import Button from '../components/ui/Button';
 import Surface from '../components/ui/Surface';
@@ -25,6 +25,7 @@ const FriendsScreen: React.FC = () => {
   const [people, setPeople] = useState<AppUser[]>([]);
   const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!currentUser) {
@@ -98,63 +99,87 @@ const FriendsScreen: React.FC = () => {
 
   const emptyState = useMemo(() => !loading && people.length === 0, [loading, people.length]);
 
+  const insetStyle = {
+    paddingBottom: insets.bottom,
+    paddingLeft: insets.left,
+    paddingRight: insets.right,
+  };
+
   if (!currentUser) {
-    return <StateView title="Please sign in" description="Create an account to discover friends." />;
+    return (
+      <SafeAreaView style={[styles.safeArea, insetStyle]} edges={['top', 'right', 'bottom', 'left']}>
+        <StateView title="Please sign in" description="Create an account to discover friends." />
+      </SafeAreaView>
+    );
   }
 
   if (loading) {
-    return <StateView title="Loading friends" loading />;
+    return (
+      <SafeAreaView style={[styles.safeArea, insetStyle]} edges={['top', 'right', 'bottom', 'left']}>
+        <StateView title="Loading friends" loading />
+      </SafeAreaView>
+    );
   }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        data={people}
-        keyExtractor={(item) => item.uid}
-        renderItem={({ item }) => {
-          const isFollowing = !!followingMap[item.uid];
-          return (
-            <Surface style={styles.card} padding="lg">
-              <View style={styles.cardLeft}>
-                <Avatar label={item.username || item.email || 'U'} uri={item.photoUrl} size={48} />
-                <View>
-                  <Text style={styles.username}>{item.username || 'Unknown user'}</Text>
-                  <Text style={styles.email}>{item.email}</Text>
+    <SafeAreaView style={[styles.safeArea, insetStyle]} edges={['top', 'right', 'bottom', 'left']}>
+      <View style={[styles.container, { paddingBottom: spacing.lg + insets.bottom }]}>
+        <FlatList
+          data={people}
+          keyExtractor={(item) => item.uid}
+          renderItem={({ item }) => {
+            const isFollowing = !!followingMap[item.uid];
+            return (
+              <Surface style={styles.card} padding="lg">
+                <View style={styles.cardLeft}>
+                  <Avatar label={item.username || item.email || 'U'} uri={item.photoUrl} size={48} />
+                  <View>
+                    <Text style={styles.username}>{item.username || 'Unknown user'}</Text>
+                    <Text style={styles.email}>{item.email}</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.actions}>
-                <Button
-                  label={isFollowing ? 'Following' : 'Follow'}
-                  variant={isFollowing ? 'secondary' : 'primary'}
-                  onPress={() => addFriend(item.uid)}
-                  disabled={isFollowing}
-                  style={styles.followButton}
-                  icon={isFollowing ? 'checkmark-circle' : 'person-add'}
-                />
-                <Button
-                  label="Chat"
-                  variant="ghost"
-                  onPress={() => navigation.navigate('Chat', { friendId: item.uid, friendName: item.username || 'Friend' })}
-                  icon="chatbubble-outline"
-                />
-              </View>
-            </Surface>
-          );
-        }}
-        ListEmptyComponent={
-          emptyState ? <Text style={styles.emptyText}>No other users yet.</Text> : null
-        }
-        contentContainerStyle={people.length === 0 ? styles.flexGrow : undefined}
-      />
-    </View>
+                <View style={styles.actions}>
+                  <Button
+                    label={isFollowing ? 'Following' : 'Follow'}
+                    variant={isFollowing ? 'secondary' : 'primary'}
+                    onPress={() => addFriend(item.uid)}
+                    disabled={isFollowing}
+                    style={styles.followButton}
+                    icon={isFollowing ? 'checkmark-circle' : 'person-add'}
+                  />
+                  <Button
+                    label="Chat"
+                    variant="ghost"
+                    onPress={() =>
+                      navigation.navigate('Chat', {
+                        friendId: item.uid,
+                        friendName: item.username || 'Friend',
+                      })
+                    }
+                    icon="chatbubble-outline"
+                  />
+                </View>
+              </Surface>
+            );
+          }}
+          ListEmptyComponent={emptyState ? <Text style={styles.emptyText}>No other users yet.</Text> : null}
+          contentContainerStyle={people.length === 0 ? styles.flexGrow : undefined}
+        />
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: palette.background,
+  },
   container: {
     flex: 1,
     backgroundColor: palette.background,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
   },
   card: {
     flexDirection: 'row',
