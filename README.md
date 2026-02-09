@@ -13,6 +13,8 @@ SocialGram is a lightweight social network experience that demonstrates producti
 - Firebase Authentication & Cloud Firestore (v9 modular SDK)
 - Cloudinary for media storage, `axios` for uploads
 - `react-native-image-picker`, `react-native-video`, Animated API
+- `react-native-audio-recorder-player` for voice notes
+- `react-native-vision-camera` for in-app video capture
 
 ## Features
 
@@ -20,7 +22,10 @@ SocialGram is a lightweight social network experience that demonstrates producti
 - Discover and follow friends (`users/{uid}/friends/{friendId}`)
 - Feed with posts from self + friends, Cloudinary media, animated cards
 - Create posts with mixed media, captions, real-time likes & comments counts
-- One-to-one friend chat with live Firestore listeners
+- One-to-one friend chat with live Firestore listeners, voice notes, and video replies
+- Instagram-style Stories tray with captions, per-user slides, and real-time Firestore sync
+- Tap/hold mic to record & send audio clips (using `react-native-audio-recorder-player`)
+- Hold the camera button to capture/share square video messages (VisionCamera + `react-native-video` playback)
 - Like button micro-interactions + card fade/scale animations
 - Minimalist original UI crafted for both Android & iOS
 
@@ -84,6 +89,19 @@ CLOUDINARY_UPLOAD_PRESET=
 | `yarn start` | Start Metro bundler |
 | `yarn android` | Build & launch on Android |
 | `yarn test` | Run Jest suite |
+| `npx react-native start --reset-cache --port 8082` | Useful when port 8081 is taken |
+
+## Media Messaging Notes
+
+- **Permissions**: Voice/video recording request microphone + camera. On Android 12+, accept prompts or enable manually in Settings.
+- **Voice notes**: Long-press the mic icon beside the composer, release to send. Playback uses a custom `VoiceBubble` component with waveform + timer.
+- **Video clips**: Long-press the cam icon to open VisionCamera, hold to capture a square MP4, tap bubble to play in-place inside a circular preview.
+
+## Stories How-To
+
+- Stories live under `stories/{storyId}` documents containing `userId`, `imageUrl`, `caption`, `createdAt`, and `expiresAt`.
+- Users can toggle Post/Story inside Create Post; Story uploads expire after 24h and immediately show in the horizontal tray with modal playback.
+- Tapping your own story reveals a menu to delete it from Firestore.
 
 Ready for review! PRs welcome for performance tweaks or additional features (stories, push notifications, etc.).
 
