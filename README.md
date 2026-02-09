@@ -1,8 +1,6 @@
 <div align="center">
-	<h1 style="display:flex;align-items:center;justify-content:center;gap:12px;margin:0;">
-		<img src="assets/images/app-logo.png" alt="SocialGram logo" style="height:48px;width:48px;object-fit:contain;" />
-		SocialGram
-	</h1>
+	<img src="assets/images/app-logo.png" alt="SocialGram logo" style="height:150px;width:150px;object-fit:contain;margin-bottom:12px;" />
+	<h1 style="margin:0;">SocialGram</h1>
 	<p>A React Native CLI social app with sharp UI, Firebase-first backend, Cloudinary-powered media.</p>
 </div>
 
