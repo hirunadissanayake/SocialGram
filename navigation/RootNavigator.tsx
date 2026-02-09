@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ActivityIndicator, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import AuthStack from './AuthStack';
@@ -9,6 +9,7 @@ import AppTabs from './AppTabs';
 import ChatScreen from '../screens/ChatScreen';
 import { RootStackParamList } from '../types/navigation';
 import { palette } from '../theme/tokens';
+import LottieView from 'lottie-react-native';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -26,8 +27,14 @@ const RootNavigator = () => {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
+      <View style={styles.splashContainer}>
+        <LottieView
+          source={require('../assets/animations/SocialGram Animated Logo.json')}
+          autoPlay
+          loop
+          style={styles.splashAnimation}
+        />
+        <Text style={styles.splashText}>Loading your feed…</Text>
       </View>
     );
   }
@@ -57,3 +64,23 @@ const RootNavigator = () => {
 };
 
 export default RootNavigator;
+
+const styles = StyleSheet.create({
+  splashContainer: {
+    flex: 1,
+    backgroundColor: palette.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  splashAnimation: {
+    width: 220,
+    height: 220,
+  },
+  splashText: {
+    marginTop: 24,
+    color: palette.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
